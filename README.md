@@ -1,6 +1,11 @@
 # TypeMapping
 Configure and perform object-to-object mapping.
 
+## In-Progress
+I am currently thinking about where this project is going. Initially, I created `While` and `ForEach` functions for handle one-to-many relationships. Since then, I've decided I don't like this approach. The `ForEach` method is particularly confusing because there's no way to access the items as they're iterated.
+
+I might instead think of something entirely different. Also, there's no way right now to build a single object from a collection. So, I wouldn't start using this project just yet.
+
 ## Overview
 Software written for the modern world involves passing objects between layers. When crossing layers, objects' values are copied t other objects, often to avoid exposing implementation details across layers. An example might be creating presentation objects from data objects returned from the data layer. You might end up writing code that looks like this:
 
