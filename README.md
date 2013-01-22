@@ -93,3 +93,33 @@ There are two important things that note from the previous example. First, notic
 
 The second thing to notice is that when mapping `IDataRecord` to `User`, I provided the generic argument to `From<T>`. Normally, specifying the generic argument to `From<T>` is optional because it can be infered from the source object. However, in this case, it is **required**! If I didn't provide it, an error would have occurred because there is no mapping from `SqlDataReader` to `User`. Technically, I could have used `SqlDataReader` instead of `IDataRecord` when defining the second mapping; however, restricting the interface makes this method more reusable and prevents access to `IDataReader`-only methods. The thing to take away from all this is that you should *always* explicitly specify the generic arguments.
 
+## Associate
+Probably the most complex feature in *TypeMapping* is the `Associate` method. `Associate` will handle the scenario where you've defined a mapping from `A -> B` and from `B -> C` and now you want to define `A -> C` (the associative property). For this to work, simply define the mapping `A -> B` and then call `Associate`, passing the results of defining `B -> C`:
+
+    // Define a mapping from List<User> to User[]
+    var list2Array = DefineMap.From<List<User>>().To<User[]>()
+        .Construct(users => new User[users.Count])
+        .MapMany(users => users, (user, array, index) => array[index] = user);
+        
+    // Define a mapping from a DataReader to a List<User>, then DataReader to a User[].
+    DefineMap.From<SqlDataReader>().To<List<User>>()
+        .MapMany(reader => reader.Read(), (reader, users) => users.Add(Map.From<IDataRecord>(reader).To<User>()))
+        .Associate(list2Array);
+        
+The second definition is actually two definitions in one! Until `Associate` is called, a mapping from `SqlDataReader` to `List<User>` is being defined. The call to `Associate` automatically defines a new mapping, which can then be further configured.
+
+The only consideration is that the middle type (`List<User>` in the example) must be default constructible or `Construct` must be called. `Associate` essentially eliminates the middle step from an otherwise long-winded mapping process. It assumes that it can create whatever it needs to avoid those middle steps.
+
+## Many-to-one
+The only scenario we didn't talk about was mapping from many objects into one. Suppose you have a `Summary` object that simply acts as a container for aggregated data. Objects like `Summary` are actually fairly common when building presentation objects (view models) or generating service responses.
+
+The simplest solution is to define mappings from one of your sources to a collection in the aggregate object. In that case, simply doing an assignment would be easier.
+
+Another option is to map to your aggregate object, but then use `MapMany` to map to the aggregate's collection. You just need to remember to pass the aggregate object to `To<T>` when performing the mapping; otherwise, each call to `Map` will create a new aggregate object.
+
+    Summary summary = new Summary();
+    Map.From<List<Order>>(orders).To<Summary>(summary)
+        .MapMany(orders => orders.Select(o => o.Total), (total, summary) => summary.OrderTotals.Add(total));
+        .Map(orders => orders.Sum(o => o.Total), summary => summary.GrandTotal);
+
+A third option is create a simple container object for all of your sources, where each is just a simple property. Then define a mapping from your container object to the aggregate object, using `Map` and `MapMany` where needed. With this option you have define an entire type but the mapping definition is easier to read and write.
