@@ -17,10 +17,11 @@ namespace TypeMapping
     {
         private readonly static Dictionary<string, Mapper<TFrom, TTo>> mapperLookup = new Dictionary<string, Mapper<TFrom, TTo>>();
 
+        private Action<TFrom> beforeMap;
+        private Action<TFrom> afterMap;
         private Func<TFrom, TTo> constructor;
         private readonly List<Action<TTo>> assigners;
-        private Func<TFrom, Func<TFrom, TTo, bool>> predicateFactory;
-        private readonly List<Action<TFrom, TTo, int>> mappers;
+        private readonly List<Action<TFrom, TTo>> mappers;
 
         /// <summary>
         /// Defines the mapper with the given identifier, creating it if it doesn't exists.
@@ -59,19 +60,50 @@ namespace TypeMapping
         /// <param name="identifier">The identifier to uniquely identify the from -> to mapping.</param>
         private Mapper(string identifier)
         {
+            beforeMap = from => { };
+            afterMap = from => { };
             constructor = from => Activator.CreateInstance<TTo>();
             assigners = new List<Action<TTo>>();
-            predicateFactory = (TFrom from) => getOneTimePredicate();
-            mappers = new List<Action<TFrom, TTo, int>>();
+            mappers = new List<Action<TFrom, TTo>>();
         }
 
-        private Func<TFrom, TTo, bool> getOneTimePredicate()
+        #region BeforeMap
+
+        /// <summary>
+        /// Performs the given action on the source object before mapping.
+        /// </summary>
+        /// <param name="action">The action to perform.</param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> BeforeMap(Action<TFrom> action)
         {
-            using (IEnumerator<int> enumerator = Enumerable.Repeat(0, 1).GetEnumerator())
+            if (action == null)
             {
-                return (TFrom from, TTo to) => enumerator.MoveNext();
+                throw new ArgumentNullException("action");
             }
+            beforeMap = action;
+            return this;
         }
+
+        #endregion
+
+        #region AfterMap
+
+        /// <summary>
+        /// Performs the given action after mapping.
+        /// </summary>
+        /// <param name="action">The action to perform.</param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> AfterMap(Action<TFrom> action)
+        {
+            if (action == null)
+            {
+                throw new ArgumentNullException("action");
+            }
+            afterMap = action;
+            return this;
+        }
+
+        #endregion
 
         #region Construct
 
@@ -139,82 +171,6 @@ namespace TypeMapping
 
         #endregion
 
-        #region ForEach
-
-        /// <summary>
-        /// Retrieves a collection from the source object and performs the mapping once for each item in the collection.
-        /// </summary>
-        /// <typeparam name="TItems">The type of the items in the collection.</typeparam>
-        /// <param name="collectionSelector">A function that returns a collection within the source object.</param>
-        /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> ForEach<TItems>(Func<TFrom, IEnumerable<TItems>> collectionSelector)
-        {
-            if (collectionSelector == null)
-            {
-                throw new ArgumentNullException("collectionSelector");
-            }
-            predicateFactory = (TFrom source) =>
-            {
-                IEnumerable<TItems> collection = collectionSelector(source);
-                using (IEnumerator<TItems> enumerator = collection.GetEnumerator())
-                {
-                    return (TFrom from, TTo to) => enumerator.MoveNext();
-                }
-            };
-            return this;
-        }
-
-        #endregion
-
-        #region While
-
-        /// <summary>
-        /// Performs the mapping operations while the given predicate returns true.
-        /// </summary>
-        /// <param name="predicate">A function that determines whether to continue mapping values.</param>
-        /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> While(Func<TFrom, bool> predicate)
-        {
-            if (predicate == null)
-            {
-                throw new ArgumentNullException("predicate");
-            }
-            predicateFactory = (TFrom source) => (TFrom from, TTo to) => predicate(from);
-            return this;
-        }
-
-        /// <summary>
-        /// Performs the mapping operations while the given predicate returns true.
-        /// </summary>
-        /// <param name="predicate">A function that determines whether to continue mapping values.</param>
-        /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> While(Func<TTo, bool> predicate)
-        {
-            if (predicate == null)
-            {
-                throw new ArgumentNullException("predicate");
-            }
-            predicateFactory = (TFrom source) => (TFrom from, TTo to) => predicate(to);
-            return this;
-        }
-
-        /// <summary>
-        /// Performs the mapping operations while the given predicate returns true.
-        /// </summary>
-        /// <param name="predicate">A function that determines whether to continue mapping values.</param>
-        /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> While(Func<TFrom, TTo, bool> predicate)
-        {
-            if (predicate == null)
-            {
-                throw new ArgumentNullException("predicate");
-            }
-            predicateFactory = (TFrom source) => predicate;
-            return this;
-        }
-
-        #endregion
-
         #region Map
 
         /// <summary>
@@ -247,13 +203,13 @@ namespace TypeMapping
             if (memberExpression.Member.MemberType == MemberTypes.Property)
             {
                 PropertyInfo propertyInfo = (PropertyInfo)memberExpression.Member;
-                Action<TFrom, TTo, int> mapper = (from, to, index) => propertyInfo.SetValue(to, fromValueSelector(from), null);
+                Action<TFrom, TTo> mapper = (from, to) => propertyInfo.SetValue(to, fromValueSelector(from), null);
                 mappers.Add(mapper);
             }
             else if (memberExpression.Member.MemberType == MemberTypes.Field)
             {
                 FieldInfo fieldInfo = (FieldInfo)memberExpression.Member;
-                Action<TFrom, TTo, int> mapper = (from, to, index) => fieldInfo.SetValue(to, fromValueSelector(from));
+                Action<TFrom, TTo> mapper = (from, to) => fieldInfo.SetValue(to, fromValueSelector(from));
                 mappers.Add(mapper);
             }
             else
@@ -280,32 +236,307 @@ namespace TypeMapping
             {
                 throw new ArgumentNullException("mapper");
             }
-            Action<TFrom, TTo, int> mapping = (TFrom from, TTo to, int index) => setter(to, fromValueSelector(from));
+            Action<TFrom, TTo> mapping = (from, to) => setter(to, fromValueSelector(from));
             mappers.Add(mapping);
             return this;
         }
 
+        #endregion
+
+        #region MapMany
+
         /// <summary>
-        /// Retrieves a value from the source object and passes it to the given mapping function. An zero-based index
-        /// representing how many times the mapper has been called will be provided.
+        /// While the given predicate returns true, the source is used to map a value into the destination.
         /// </summary>
-        /// <typeparam name="TProp">The type of the value being mapped.</typeparam>
-        /// <param name="fromValueSelector">A function that retrieves the value to map from the source object.</param>
-        /// <param name="setter">A function that applies the extracted value to the destination object.</param>
+        /// <param name="predicate">A function that is used to determine when to stop mapping.</param>
+        /// <param name="setter">A function that maps the source object to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> Map<TProp>(Func<TFrom, int, TProp> fromValueSelector, Action<TTo, int, TProp> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, bool> predicate, Action<TFrom, TTo> setter)
         {
-            if (fromValueSelector == null)
+            if (predicate == null)
             {
-                throw new ArgumentNullException("fromValueSelector");
+                throw new ArgumentNullException("predicate");
             }
             if (setter == null)
             {
-                throw new ArgumentNullException("mapper");
+                throw new ArgumentNullException("setter");
             }
-            Action<TFrom, TTo, int> mapping = (TFrom from, TTo to, int index) => setter(to, index, fromValueSelector(from, index));
-            mappers.Add(mapping);
+            Action<TFrom, TTo> mapper = (from, to) =>
+            {
+                while (predicate(from))
+                {
+                    setter(from, to);
+                }
+            };
+            mappers.Add(mapper);
             return this;
+        }
+
+        /// <summary>
+        /// While the given predicate returns true, the source is used to map a value into the destination.
+        /// </summary>
+        /// <param name="predicate">
+        /// A function that is used to determine when to stop mapping. An zero-based count for how many times 
+        /// the function is called will be passed.
+        /// </param>
+        /// <param name="setter">
+        /// A function that maps the source object to the destination object. A zero-based count for how many times
+        /// the function is called will be passed.
+        /// </param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, int, bool> predicate, Action<TFrom, TTo, int> setter)
+        {
+            if (predicate == null)
+            {
+                throw new ArgumentNullException("predicate");
+            }
+            if (setter == null)
+            {
+                throw new ArgumentNullException("setter");
+            }
+            Action<TFrom, TTo> mapper = (from, to) =>
+            {
+                int count = 0;
+                while (predicate(from, count))
+                {
+                    setter(from, to, count);
+                    ++count;
+                }
+            };
+            mappers.Add(mapper);
+            return this;
+        }
+
+        /// <summary>
+        /// While the given predicate returns true, the source is used to map a value into the destination.
+        /// </summary>
+        /// <param name="predicate">A function that is used to determine when to stop mapping.</param>
+        /// <param name="setter">A function that maps the source object to the destination object.</param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, bool> predicate, Action<TFrom, TTo> setter)
+        {
+            if (predicate == null)
+            {
+                throw new ArgumentNullException("predicate");
+            }
+            if (setter == null)
+            {
+                throw new ArgumentNullException("setter");
+            }
+            Action<TFrom, TTo> mapper = (from, to) =>
+            {
+                while (predicate(to))
+                {
+                    setter(from, to);
+                }
+            };
+            mappers.Add(mapper);
+            return this;
+        }
+
+        /// <summary>
+        /// While the given predicate returns true, the source is used to map a value into the destination.
+        /// </summary>
+        /// <param name="predicate">
+        /// A function that is used to determine when to stop mapping. An zero-based count for how many times 
+        /// the function is called will be passed.
+        /// </param>
+        /// <param name="setter">
+        /// A function that maps the source object to the destination object. A zero-based count for how many times
+        /// the function is called will be passed.
+        /// </param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, int, bool> predicate, Action<TFrom, TTo, int> setter)
+        {
+            if (predicate == null)
+            {
+                throw new ArgumentNullException("predicate");
+            }
+            if (setter == null)
+            {
+                throw new ArgumentNullException("setter");
+            }
+            Action<TFrom, TTo> mapper = (from, to) =>
+            {
+                int count = 0;
+                while (predicate(to, count))
+                {
+                    setter(from, to, count);
+                    ++count;
+                }
+            };
+            mappers.Add(mapper);
+            return this;
+        }
+
+        /// <summary>
+        /// While the given predicate returns true, the source is used to map a value into the destination.
+        /// </summary>
+        /// <param name="predicate">A function that is used to determine when to stop mapping from the source object.</param>
+        /// <param name="setter">A function that maps the source object to the destination object.</param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, bool> predicate, Action<TFrom, TTo> setter)
+        {
+            if (predicate == null)
+            {
+                throw new ArgumentNullException("predicate");
+            }
+            if (setter == null)
+            {
+                throw new ArgumentNullException("setter");
+            }
+            Action<TFrom, TTo> mapper = (from, to) =>
+            {
+                while (predicate(from, to))
+                {
+                    setter(from, to);
+                }
+            };
+            mappers.Add(mapper);
+            return this;
+        }
+
+        /// <summary>
+        /// While the given predicate returns true, the source is used to map a value into the destination.
+        /// </summary>
+        /// <param name="predicate">
+        /// A function that is used to determine when to stop mapping frmo the source object. An zero-based count
+        /// for how many times the function is called will be passed.
+        /// </param>
+        /// <param name="setter">
+        /// A function that maps the source object to the destination object. A zero-based count for how many times
+        /// the function is called will be passed.
+        /// </param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, int, bool> predicate, Action<TFrom, TTo, int> setter)
+        {
+            if (predicate == null)
+            {
+                throw new ArgumentNullException("predicate");
+            }
+            if (setter == null)
+            {
+                throw new ArgumentNullException("setter");
+            }
+            Action<TFrom, TTo> mapper = (from, to) =>
+            {
+                int count = 0;
+                while (predicate(from, to, count))
+                {
+                    setter(from, to, count);
+                    ++count;
+                }
+            };
+            mappers.Add(mapper);
+            return this;
+        }
+
+        /// <summary>
+        /// The given setter function will be called for each item in the collection returned by the given selector.
+        /// </summary>
+        /// <typeparam name="TValue">The type of the value in the source collection.</typeparam>
+        /// <param name="selector">A function that returns a collection within the source object.</param>
+        /// <param name="setter">A function that maps the collection value to the destination object.</param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TValue, TTo> setter)
+        {
+            if (selector == null)
+            {
+                throw new ArgumentNullException("selector");
+            }
+            if (setter == null)
+            {
+                throw new ArgumentNullException("setter");
+            }
+            Action<TFrom, TTo> mapper = (from, to) =>
+            {
+                IEnumerable<TValue> collection = selector(from);
+                foreach (TValue value in collection)
+                {
+                    setter(value, to);
+                }
+            };
+            mappers.Add(mapper);
+            return this;
+        }
+
+        /// <summary>
+        /// The given setter function will be called for each item in the collection returned by the given selector.
+        /// </summary>
+        /// <typeparam name="TValue">The type of the value in the source collection.</typeparam>
+        /// <param name="selector">A function that returns a collection within the source object.</param>
+        /// <param name="setter">
+        /// A function that maps the collection value to the destination object. A zero-based count for how many times
+        /// the function is called will be passed.
+        /// </param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TValue, TTo, int> setter)
+        {
+            if (selector == null)
+            {
+                throw new ArgumentNullException("selector");
+            }
+            if (setter == null)
+            {
+                throw new ArgumentNullException("setter");
+            }
+            Action<TFrom, TTo> mapper = (from, to) =>
+            {
+                int count = 0;
+                IEnumerable<TValue> collection = selector(from);
+                foreach (TValue value in collection)
+                {
+                    setter(value, to, count);
+                    ++count;
+                }
+            };
+            mappers.Add(mapper);
+            return this;
+        }
+
+        #endregion
+
+        #region Associate
+
+        /// <summary>
+        /// Associates the source object to the other object using the current mapping's destination object as the source to
+        /// the other mapping.
+        /// </summary>
+        /// <typeparam name="TOther">The type of the object to indirectly associate the source object to.</typeparam>
+        /// <param name="definition">The mapping configuration associating this mapping's destination object to the other object.</param>
+        /// <returns>A mapping configuration between the source type and the other type.</returns>
+        /// <remarks>
+        /// Associating TFrom to TOther is only possible if TTo is default constructible or Construct has been called.
+        /// </remarks>
+        public IMapperDefinition<TFrom, TOther> Associate<TOther>(IMapperDefinition<TTo, TOther> definition)
+        {
+            if (definition == null)
+            {
+                throw new ArgumentNullException("definition");
+            }
+            Mapper<TTo, TOther> otherMapper = (Mapper<TTo, TOther>)definition;
+            return DefineMap.From<TFrom>().To<TOther>().Map(from => Map(from), (other, to) => otherMapper.Map(to, other));
+        }
+
+        /// <summary>
+        /// Associates the source object to the other object using the current mapping's destination object as the source to
+        /// the other mapping.
+        /// </summary>
+        /// <typeparam name="TOther">The type of the object to indirectly associate the source object to.</typeparam>
+        /// <param name="definition">The mapping configuration associating this mapping's destination object to the other object.</param>
+        /// <param name="identifier">The identifier to use to distinguish the new mapping definition from others with the same type parameters.</param>
+        /// <returns>A mapping configuration between the source type and the other type.</returns>
+        /// <remarks>
+        /// Associating TFrom to TOther is only possible if TTo is default constructible or Construct has been called.
+        /// </remarks>
+        public IMapperDefinition<TFrom, TOther> Associate<TOther>(IMapperDefinition<TTo, TOther> definition, string identifier)
+        {
+            if (definition == null)
+            {
+                throw new ArgumentNullException("definition");
+            }
+            Mapper<TTo, TOther> otherMapper = (Mapper<TTo, TOther>)definition;
+            return DefineMap.From<TFrom>().To<TOther>(identifier).Map(from => Map(from), (other, to) => otherMapper.Map(to, other));
         }
 
         #endregion
@@ -317,8 +548,16 @@ namespace TypeMapping
         /// <returns>The destination object.</returns>
         public TTo Map(TFrom from)
         {
-            TTo to = constructor(from);
-            return map(from, to);
+            try
+            {
+                beforeMap(from);
+                TTo to = constructor(from);
+                return map(from, to);
+            }
+            finally
+            {
+                afterMap(from);
+            }
         }
 
         /// <summary>
@@ -329,7 +568,15 @@ namespace TypeMapping
         /// <returns>The destination object.</returns>
         public TTo Map(TFrom from, TTo to)
         {
-            return map(from, to);
+            try
+            {
+                beforeMap(from);
+                return map(from, to);
+            }
+            finally
+            {
+                afterMap(from);
+            }
         }
 
         private TTo map(TFrom from, TTo to)
@@ -338,13 +585,9 @@ namespace TypeMapping
             {
                 assigner(to);
             }
-            Func<TFrom, TTo, bool> predicate = predicateFactory(from);
-            for (int index = 0; predicate(from, to); ++index)
+            foreach (Action<TFrom, TTo> mapper in mappers)
             {
-                foreach (Action<TFrom, TTo, int> mapper in mappers)
-                {
-                    mapper(from, to, index);
-                }
+                mapper(from, to);
             }
             return to;
         }
