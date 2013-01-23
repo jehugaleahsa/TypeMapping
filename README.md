@@ -21,6 +21,9 @@ The code sample above would be used to define a mapping from a `User` object to 
     
 This code assumes that the given user is not null and that the `Presentation` object is default constructible.
 
+## Identifiers
+If you need to define a mapping between the same types multiple times, you can pass an identifier to `To<T>` to uniquely distinguish them. When actually performing the mapping, pass the same identifier to `To<T>`.
+
 ## Construct
 If your destination type is not default constructible, you have two options: you can pass the pre-constructed object to the `To<T>` method when mapping -or- you can call the `Construct` method.
 
