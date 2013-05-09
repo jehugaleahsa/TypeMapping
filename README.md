@@ -97,7 +97,7 @@ There are two important things that note from the previous example. First, notic
 The second thing to notice is that when mapping `IDataRecord` to `User`, I provided the generic argument to `From<T>`. Normally, specifying the generic argument to `From<T>` is optional because it can be infered from the source object. However, in this case, it is **required**! If I didn't provide it, an error would have occurred because there is no mapping from `SqlDataReader` to `User`. Technically, I could have used `SqlDataReader` instead of `IDataRecord` when defining the second mapping; however, restricting the interface makes this method more reusable and prevents access to `IDataReader`-only methods. The thing to take away from all this is that you should *always* explicitly specify the generic arguments.
 
 ## Associate
-Probably the most complex feature in *TypeMapping* is the `Associate` method. `Associate` will handle the scenario where you've defined a mapping from `A -> B` and from `B -> C` and now you want to define `A -> C` (the associative property). For this to work, simply define the mapping `A -> B` and then call `Associate`, passing the results of defining `B -> C`:
+Probably the most complex feature in *TypeMapping* is the `Associate` method. `Associate` will handle the scenario where you've defined a mapping from `A -> B` and from `B -> C` and now you want to define `A -> C` (the transitive property). For this to work, simply define the mapping `A -> B` and then call `Associate`, passing the results of defining `B -> C`:
 
     // Define a mapping from List<User> to User[]
     var list2Array = DefineMap.From<List<User>>().To<User[]>()
