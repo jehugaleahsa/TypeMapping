@@ -32,7 +32,7 @@ namespace TypeMapping
         /// <param name="toPropertySelector">An expression that returns the property to set.</param>
         /// <param name="value">The constant value to assign the property to.</param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> Assign<TProp>(Expression<Func<TTo, TProp>> toPropertySelector, TProp value);
+        IMapperDefinition<TFrom, TTo> Map<TProp>(Expression<Func<TTo, TProp>> toPropertySelector, TProp value);
 
         /// <summary>
         /// Specifies a method that constructs the new destination object.
@@ -66,7 +66,7 @@ namespace TypeMapping
         /// <param name="predicate">A function that is used to determine when to stop mapping.</param>
         /// <param name="setter">A function that maps the source object to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, bool> predicate, Action<TFrom, TTo> setter);
+        IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, bool> predicate, Action<TTo, TFrom> setter);
 
         /// <summary>
         /// While the given predicate returns true, the source is used to map a value into the destination.
@@ -80,7 +80,7 @@ namespace TypeMapping
         /// the function is called will be passed.
         /// </param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, int, bool> predicate, Action<TFrom, TTo, int> setter);
+        IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, int, bool> predicate, Action<TTo, int, TFrom> setter);
 
         /// <summary>
         /// While the given predicate returns true, the source is used to map a value into the destination.
@@ -88,7 +88,7 @@ namespace TypeMapping
         /// <param name="predicate">A function that is used to determine when to stop mapping.</param>
         /// <param name="setter">A function that maps the source object to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, bool> predicate, Action<TFrom, TTo> setter);
+        IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, bool> predicate, Action<TTo, TFrom> setter);
 
         /// <summary>
         /// While the given predicate returns true, the source is used to map a value into the destination.
@@ -102,7 +102,7 @@ namespace TypeMapping
         /// the function is called will be passed.
         /// </param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, int, bool> predicate, Action<TFrom, TTo, int> setter);
+        IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, int, bool> predicate, Action<TTo, int, TFrom> setter);
 
         /// <summary>
         /// While the given predicate returns true, the source is used to map a value into the destination.
@@ -110,7 +110,7 @@ namespace TypeMapping
         /// <param name="predicate">A function that is used to determine when to stop mapping from the source object.</param>
         /// <param name="setter">A function that maps the source object to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, bool> predicate, Action<TFrom, TTo> setter);
+        IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, bool> predicate, Action<TTo, TFrom> setter);
 
         /// <summary>
         /// While the given predicate returns true, the source is used to map a value into the destination.
@@ -124,7 +124,7 @@ namespace TypeMapping
         /// the function is called will be passed.
         /// </param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, int, bool> predicate, Action<TFrom, TTo, int> setter);
+        IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, int, bool> predicate, Action<TTo, int, TFrom> setter);
 
         /// <summary>
         /// The given setter function will be called for each item in the collection returned by the given selector.
@@ -133,7 +133,7 @@ namespace TypeMapping
         /// <param name="selector">A function that returns a collection within the source object.</param>
         /// <param name="setter">A function that maps the collection value to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TValue, TTo> setter);
+        IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TTo, TValue> setter);
 
         /// <summary>
         /// The given setter function will be called for each item in the collection returned by the given selector.
@@ -145,7 +145,7 @@ namespace TypeMapping
         /// the function is called will be passed.
         /// </param>
         /// <returns>The current mapper.</returns>
-        IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TValue, TTo, int> setter);
+        IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TTo, int, TValue> setter);
 
         /// <summary>
         /// Associates the source object to the other object using the current mapping's destination object as the source to
@@ -157,7 +157,7 @@ namespace TypeMapping
         /// <remarks>
         /// Associating TFrom to TOther is only possible if TTo is default constructible or Construct has been called.
         /// </remarks>
-        IMapperDefinition<TFrom, TOther> Associate<TOther>(IMapperDefinition<TTo, TOther> definition);
+        IMapperDefinition<TFrom, TOther> Bridge<TOther>(IMapperDefinition<TTo, TOther> definition);
 
         /// <summary>
         /// Associates the source object to the other object using the current mapping's destination object as the source to
@@ -170,6 +170,6 @@ namespace TypeMapping
         /// <remarks>
         /// Associating TFrom to TOther is only possible if TTo is default constructible or Construct has been called.
         /// </remarks>
-        IMapperDefinition<TFrom, TOther> Associate<TOther>(IMapperDefinition<TTo, TOther> definition, string identifier);
+        IMapperDefinition<TFrom, TOther> Bridge<TOther>(IMapperDefinition<TTo, TOther> definition, string identifier);
     }
 }

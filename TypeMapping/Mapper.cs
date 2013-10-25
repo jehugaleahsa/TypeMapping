@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
-using TypeMapping.Properties;
 using System.Reflection.Emit;
+using TypeMapping.Properties;
 
 namespace TypeMapping
 {
@@ -62,9 +61,32 @@ namespace TypeMapping
         {
             beforeMap = from => { };
             afterMap = from => { };
-            constructor = from => Activator.CreateInstance<TTo>();
+            constructor = createInstance();
             assigners = new List<Action<TTo>>();
             mappers = new List<Action<TFrom, TTo>>();
+        }
+
+        private static Func<TFrom, TTo> creator;
+
+        private static Func<TFrom, TTo> createInstance()
+        {
+            if (creator == null)
+            {
+                ConstructorInfo ctorInfo = typeof(TTo).GetConstructor(Type.EmptyTypes);
+                if (ctorInfo == null)
+                {
+                    creator = from => { throw new InvalidOperationException(Resources.ConstructorNotDefined); };
+                }
+                else
+                {
+                    DynamicMethod method = new DynamicMethod("create" + typeof(TTo).Name, typeof(TTo), new Type[] { typeof(TFrom) }, typeof(TTo));
+                    ILGenerator generator = method.GetILGenerator();
+                    generator.Emit(OpCodes.Newobj, ctorInfo);
+                    generator.Emit(OpCodes.Ret);
+                    creator = (Func<TFrom, TTo>)method.CreateDelegate(typeof(Func<TFrom, TTo>));
+                }
+            }
+            return creator;
         }
 
         #region BeforeMap
@@ -125,16 +147,16 @@ namespace TypeMapping
 
         #endregion
 
-        #region Assign
+        #region Map
 
         /// <summary>
-        /// Assigns the given value to the property returned by the given selector function.
+        /// Maps the given value to the property returned by the given selector function.
         /// </summary>
         /// <typeparam name="TProp">The type of the property being set.</typeparam>
         /// <param name="toPropertySelector">An expression that returns the property to set.</param>
         /// <param name="value">The constant value to assign the property to.</param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> Assign<TProp>(Expression<Func<TTo, TProp>> toPropertySelector, TProp value)
+        public IMapperDefinition<TFrom, TTo> Map<TProp>(Expression<Func<TTo, TProp>> toPropertySelector, TProp value)
         {
             if (toPropertySelector == null)
             {
@@ -169,9 +191,51 @@ namespace TypeMapping
             return this;
         }
 
-        #endregion
-
-        #region Map
+        /// <summary>
+        /// Maps the given value to the property returned by the given selector function.
+        /// </summary>
+        /// <typeparam name="TProp">The type of the property being set.</typeparam>
+        /// <param name="toPropertySelector">An expression that returns the property to set.</param>
+        /// <param name="generator">A function used to generate the value to assign to the property.</param>
+        /// <returns>The current mapper.</returns>
+        public IMapperDefinition<TFrom, TTo> Map<TProp>(Expression<Func<TTo, TProp>> toPropertySelector, Func<TProp> generator)
+        {
+            if (toPropertySelector == null)
+            {
+                throw new ArgumentNullException("toPropertySelector");
+            }
+            if (generator == null)
+            {
+                throw new ArgumentNullException("valueSelector");
+            }
+            LambdaExpression lambdaExpression = toPropertySelector as LambdaExpression;
+            if (lambdaExpression == null)
+            {
+                throw new ArgumentException(Resources.InvalidPropertySelector, "toPropertySelector");
+            }
+            MemberExpression memberExpression = lambdaExpression.Body as MemberExpression;
+            if (memberExpression == null)
+            {
+                throw new ArgumentException(Resources.InvalidPropertySelector, "toPropertySelector");
+            }
+            if (memberExpression.Member.MemberType == MemberTypes.Property)
+            {
+                PropertyInfo propertyInfo = (PropertyInfo)memberExpression.Member;
+                Action<TTo> assigner = (TTo to) => propertyInfo.SetValue(to, generator(), null);
+                assigners.Add(assigner);
+            }
+            else if (memberExpression.Member.MemberType == MemberTypes.Field)
+            {
+                FieldInfo fieldInfo = (FieldInfo)memberExpression.Member;
+                Action<TTo> assigner = (TTo to) => fieldInfo.SetValue(to, generator());
+                assigners.Add(assigner);
+            }
+            else
+            {
+                throw new ArgumentException(Resources.InvalidPropertySelector, "toPropertySelector");
+            }
+            return this;
+        }
 
         /// <summary>
         /// Maps a value from the source object to a property in the destination object.
@@ -251,7 +315,7 @@ namespace TypeMapping
         /// <param name="predicate">A function that is used to determine when to stop mapping.</param>
         /// <param name="setter">A function that maps the source object to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, bool> predicate, Action<TFrom, TTo> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, bool> predicate, Action<TTo, TFrom> setter)
         {
             if (predicate == null)
             {
@@ -265,7 +329,7 @@ namespace TypeMapping
             {
                 while (predicate(from))
                 {
-                    setter(from, to);
+                    setter(to, from);
                 }
             };
             mappers.Add(mapper);
@@ -284,7 +348,7 @@ namespace TypeMapping
         /// the function is called will be passed.
         /// </param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, int, bool> predicate, Action<TFrom, TTo, int> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, int, bool> predicate, Action<TTo, int, TFrom> setter)
         {
             if (predicate == null)
             {
@@ -299,7 +363,7 @@ namespace TypeMapping
                 int count = 0;
                 while (predicate(from, count))
                 {
-                    setter(from, to, count);
+                    setter(to, count, from);
                     ++count;
                 }
             };
@@ -313,7 +377,7 @@ namespace TypeMapping
         /// <param name="predicate">A function that is used to determine when to stop mapping.</param>
         /// <param name="setter">A function that maps the source object to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, bool> predicate, Action<TFrom, TTo> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, bool> predicate, Action<TTo, TFrom> setter)
         {
             if (predicate == null)
             {
@@ -327,7 +391,7 @@ namespace TypeMapping
             {
                 while (predicate(to))
                 {
-                    setter(from, to);
+                    setter(to, from);
                 }
             };
             mappers.Add(mapper);
@@ -346,7 +410,7 @@ namespace TypeMapping
         /// the function is called will be passed.
         /// </param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, int, bool> predicate, Action<TFrom, TTo, int> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TTo, int, bool> predicate, Action<TTo, int, TFrom> setter)
         {
             if (predicate == null)
             {
@@ -361,7 +425,7 @@ namespace TypeMapping
                 int count = 0;
                 while (predicate(to, count))
                 {
-                    setter(from, to, count);
+                    setter(to, count, from);
                     ++count;
                 }
             };
@@ -375,7 +439,7 @@ namespace TypeMapping
         /// <param name="predicate">A function that is used to determine when to stop mapping from the source object.</param>
         /// <param name="setter">A function that maps the source object to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, bool> predicate, Action<TFrom, TTo> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, bool> predicate, Action<TTo, TFrom> setter)
         {
             if (predicate == null)
             {
@@ -389,7 +453,7 @@ namespace TypeMapping
             {
                 while (predicate(from, to))
                 {
-                    setter(from, to);
+                    setter(to, from);
                 }
             };
             mappers.Add(mapper);
@@ -408,7 +472,7 @@ namespace TypeMapping
         /// the function is called will be passed.
         /// </param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, int, bool> predicate, Action<TFrom, TTo, int> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany(Func<TFrom, TTo, int, bool> predicate, Action<TTo, int, TFrom> setter)
         {
             if (predicate == null)
             {
@@ -423,7 +487,7 @@ namespace TypeMapping
                 int count = 0;
                 while (predicate(from, to, count))
                 {
-                    setter(from, to, count);
+                    setter(to, count, from);
                     ++count;
                 }
             };
@@ -438,7 +502,7 @@ namespace TypeMapping
         /// <param name="selector">A function that returns a collection within the source object.</param>
         /// <param name="setter">A function that maps the collection value to the destination object.</param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TValue, TTo> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TTo, TValue> setter)
         {
             if (selector == null)
             {
@@ -453,7 +517,7 @@ namespace TypeMapping
                 IEnumerable<TValue> collection = selector(from);
                 foreach (TValue value in collection)
                 {
-                    setter(value, to);
+                    setter(to, value);
                 }
             };
             mappers.Add(mapper);
@@ -470,7 +534,7 @@ namespace TypeMapping
         /// the function is called will be passed.
         /// </param>
         /// <returns>The current mapper.</returns>
-        public IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TValue, TTo, int> setter)
+        public IMapperDefinition<TFrom, TTo> MapMany<TValue>(Func<TFrom, IEnumerable<TValue>> selector, Action<TTo, int, TValue> setter)
         {
             if (selector == null)
             {
@@ -486,7 +550,7 @@ namespace TypeMapping
                 IEnumerable<TValue> collection = selector(from);
                 foreach (TValue value in collection)
                 {
-                    setter(value, to, count);
+                    setter(to, count, value);
                     ++count;
                 }
             };
@@ -496,7 +560,7 @@ namespace TypeMapping
 
         #endregion
 
-        #region Associate
+        #region Bridge
 
         /// <summary>
         /// Associates the source object to the other object using the current mapping's destination object as the source to
@@ -508,7 +572,7 @@ namespace TypeMapping
         /// <remarks>
         /// Associating TFrom to TOther is only possible if TTo is default constructible or Construct has been called.
         /// </remarks>
-        public IMapperDefinition<TFrom, TOther> Associate<TOther>(IMapperDefinition<TTo, TOther> definition)
+        public IMapperDefinition<TFrom, TOther> Bridge<TOther>(IMapperDefinition<TTo, TOther> definition)
         {
             if (definition == null)
             {
@@ -529,7 +593,7 @@ namespace TypeMapping
         /// <remarks>
         /// Associating TFrom to TOther is only possible if TTo is default constructible or Construct has been called.
         /// </remarks>
-        public IMapperDefinition<TFrom, TOther> Associate<TOther>(IMapperDefinition<TTo, TOther> definition, string identifier)
+        public IMapperDefinition<TFrom, TOther> Bridge<TOther>(IMapperDefinition<TTo, TOther> definition, string identifier)
         {
             if (definition == null)
             {

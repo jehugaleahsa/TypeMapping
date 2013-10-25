@@ -61,6 +61,15 @@ namespace TypeMapping.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The destination type does not have a default constructor..
+        /// </summary>
+        internal static string ConstructorNotDefined {
+            get {
+                return ResourceManager.GetString("ConstructorNotDefined", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to A selector expression was passed that did no resolve to a field or property..
         /// </summary>
         internal static string InvalidPropertySelector {
