@@ -107,7 +107,7 @@ Probably the most complex feature in *TypeMapping* is the `Bridge` method. `Brid
     // Define a mapping from a DataReader to a List<User>, then DataReader to a User[].
     DefineMap.From<SqlDataReader>().To<List<User>>()
         .MapMany(reader => reader.Read(), (users, record) => users.Add(Map.From<IDataRecord>(record).To<User>()))
-        .Associate(list2Array);
+        .Bridge(list2Array);
         
 The second definition is actually two definitions in one! Until `Bridge` is called, a mapping from `SqlDataReader` to `List<User>` is being defined. The call to `Bridge` automatically defines a new mapping, which can then be further configured.
 
